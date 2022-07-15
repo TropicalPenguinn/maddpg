@@ -144,7 +144,7 @@ class MADDPGAgentTrainer(AgentTrainer):
             num_units=args.num_units
         )
         # Create experience buffer
-        self.replay_buffer = ReplayBuffer(1e6)
+        self.replay_buffer = ReplayBuffer(1e6,tau=args.tau)
 
         self.max_replay_buffer_len = args.batch_size * args.max_episode_len
         self.replay_sample_index = None
@@ -155,12 +155,16 @@ class MADDPGAgentTrainer(AgentTrainer):
     def experience(self, obs, act, rew, new_obs, done, terminal):
         # Store transition in the replay buffer.
         self.replay_buffer.add(obs, act, rew, new_obs, float(done))
+    def h_experience(self,obs,act,rew,new_obs,done,terminal):
+        self.replay_buffer.h_add(obs,act,rew,new_obs,float(done))
 
     def preupdate(self):
         self.replay_sample_index = None
 
     def update(self, agents, t):
-        if len(self.replay_buffer) < self.max_replay_buffer_len: # replay buffer is not large enough
+        if len(self.replay_buffer._storage) < self.max_replay_buffer_len: # replay buffer is not large enough
+            return
+        if len(self.replay_buffer.h_storage) < 100: # replay buffer is not large enough
             return
         if not t % 100 == 0:  # only update every 100 steps
             return
