@@ -2,7 +2,7 @@ import numpy as np
 import random
 
 class ReplayBuffer(object):
-    def __init__(self, size):
+    def __init__(self, size,tau=0.0):
         """Create Prioritized Replay buffer.
 
         Parameters
@@ -15,12 +15,21 @@ class ReplayBuffer(object):
         self._maxsize = int(size)
         self._next_idx = 0
 
+        self.h_storage=[]
+        self.h_next_idx=0
+
+        self.tau=tau
+
     def __len__(self):
         return len(self._storage)
 
     def clear(self):
         self._storage = []
         self._next_idx = 0
+
+
+        self.h_storage=[]
+        self.h_next_idx=0
 
     def add(self, obs_t, action, reward, obs_tp1, done):
         data = (obs_t, action, reward, obs_tp1, done)
@@ -31,10 +40,28 @@ class ReplayBuffer(object):
             self._storage[self._next_idx] = data
         self._next_idx = (self._next_idx + 1) % self._maxsize
 
+    def h_add(self, obs_t, action, reward, obs_tp1, done):
+        data = (obs_t, action, reward, obs_tp1, done)
+
+        if self.h_next_idx >= len(self.h_storage):
+            self.h_storage.append(data)
+        else:
+            self.h_storage[self.h_next_idx] = data
+        self.h_next_idx = (self.h_next_idx + 1) % self._maxsize
+
     def _encode_sample(self, idxes):
         obses_t, actions, rewards, obses_tp1, dones = [], [], [], [], []
-        for i in idxes:
+        for i in idxes[0]:
             data = self._storage[i]
+            obs_t, action, reward, obs_tp1, done = data
+            obses_t.append(np.array(obs_t, copy=False))
+            actions.append(np.array(action, copy=False))
+            rewards.append(reward)
+            obses_tp1.append(np.array(obs_tp1, copy=False))
+            dones.append(done)
+
+        for i in idxes[1]:
+            data = self.h_storage[i]
             obs_t, action, reward, obs_tp1, done = data
             obses_t.append(np.array(obs_t, copy=False))
             actions.append(np.array(action, copy=False))
@@ -44,7 +71,22 @@ class ReplayBuffer(object):
         return np.array(obses_t), np.array(actions), np.array(rewards), np.array(obses_tp1), np.array(dones)
 
     def make_index(self, batch_size):
-        return [random.randint(0, len(self._storage) - 1) for _ in range(batch_size)]
+
+        indices=[]
+        h_indices=[]
+
+        for i in range(batch_size):
+            r=random.uniform(0,1)
+            if r>self.tau:
+                idx=random.randint(0,len(self._storage)-1)
+                indices.append(idx)
+            else:
+                idx=random.randint(0,len(self.h_storage)-1)
+                indices.append(idx)
+
+        return indices,h_indices
+
+
 
     def make_latest_index(self, batch_size):
         idx = [(self._next_idx - 1 - i) % self._maxsize for i in range(batch_size)]
@@ -84,3 +126,4 @@ class ReplayBuffer(object):
 
     def collect(self):
         return self.sample(-1)
+
