@@ -26,6 +26,8 @@ def parse_args():
     parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
     parser.add_argument("--batch-size", type=int, default=1024, help="number of episodes to optimize at the same time")
     parser.add_argument("--num-units", type=int, default=64, help="number of units in the mlp")
+    parser.add_argument("--replay",type=str,default="vanilla",help="There are vanilla,prioritized")
+    parser.add_argument("--tau",type=float,default=0.0,help="if vanilla set tau for episodic replay buffer")
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default="exp_name", help="name of the experiment")
     parser.add_argument("--save-dir", type=str, default="", help="directory in which training state and model should be saved")
@@ -122,6 +124,11 @@ def train(arglist):
         train_step = 0
         t_start = time.time()
 
+
+        transitions=[]
+        R_Max=-1000000
+        count=0
+        episode_reward=0
         print('Starting iterations...')
         while True:
             # get action
@@ -131,18 +138,29 @@ def train(arglist):
             episode_step += 1
             done = all(done_n)
             terminal = (episode_step >= arglist.max_episode_len)
+            transitions.append([obs_n,action_n,rew_n,new_obs_n,done_n,terminal])
             # collect experience
             for i, agent in enumerate(trainers):
                 agent.experience(obs_n[i], action_n[i], rew_n[i], new_obs_n[i], done_n[i], terminal)
             obs_n = new_obs_n
 
             for i, rew in enumerate(rew_n):
+                episode_reward+=rew
                 episode_rewards[-1] += rew
                 agent_rewards[i][-1] += rew
 
 
                 
             if done or terminal:
+                count+=1
+                if R_Max<episode_reward:
+                    for t in transitions:
+                        for i,agent in enumerate(trainers):
+                            agent.h_experience(t[0][i],t[1][i],t[2][i],t[3][i],t[4][i],t[5])
+                    if count%100==0:
+                        R_Max=episode_reward
+                transitions=[]
+                episode_reward=0
                 obs_n = env.reset()
                 episode_step = 0
                 episode_rewards.append(0)
